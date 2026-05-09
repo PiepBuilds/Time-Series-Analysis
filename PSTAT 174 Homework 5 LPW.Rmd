@@ -1,0 +1,395 @@
+---
+title: "PSTAT 174 Homework 5"
+author: "Lucas Pieper-White"
+date: '`r Sys.Date()`'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Question 1: Glossary Creation
+
+# House Keeping 
+
+```{r}
+# set the working directory
+setwd("path/to/folder") 
+
+# print the current working directory
+getwd()  
+```
+                        
+
+# Reading Data
+
+```{r}
+# Read plain text from a file or URL
+births <- scan("http://robjhyndman.com/tsdldata/data/nybirths.dat")
+
+# Read CSV/tabular data: sep = delimiter, skip = rows to skip, nrows = max rows to read
+wine.csv <- read.table("file.csv", sep=",", header=FALSE, skip=1, nrows=187)
+
+# Read Excel files (requires readxl package)
+library(readxl)
+df <- read_excel("file.xlsx", skip=1, n_max=391)
+
+# Preview a data frame
+head(df)
+
+# Get sample size
+length(births)
+
+```
+
+# Creating Time Series Objects
+
+```{r}
+# Convert numeric vector to ts object: start = c(year, period), frequency = observations per year
+#     frequency=4 for quarterly, =1 for annual
+births_ts <- ts(births, start=c(1946,1), frequency=12)   # monthly
+
+```
+
+
+# Plotting Time Series
+
+```{r}
+# Plot ts object vs time axis
+plot(births_ts, main="Time Series ____________")
+
+# Alternative time series plot
+ts.plot(births_ts)
+
+# Plot data vs integer index 1, 2, ..., n
+plot(1:length(births), births, type='l',
+     xlab='index',
+     main="Time Series ____________")
+
+```
+
+
+# Adding Tend and Mean lines
+
+```{r}
+# Create integer index vector
+index <- 1:length(births)
+
+# Fit OLS linear trend
+trend <- lm(births ~ index)
+
+# Overlay fitted trend line (red)
+abline(trend, col="red")
+
+# Overlay horizontal mean line (blue)
+abline(h=mean(births), col="blue")
+
+# Add dashed reference line at zero
+abline(h=0, lty=2)
+
+```
+
+
+# Yearly/ Quarterly Aggregation:
+
+```{r}
+# Aggregate to yearly averages
+# Also available: apply.monthly(), apply.quarterly(), apply.weekly(), apply.daily(). FUN can be mean, sum, or var
+library(xts)
+ts.yearly <- apply.yearly(as.xts(births_ts), FUN=mean)
+
+# Plot aggregated data
+plot(ts.yearly, main="Yearly Aggregated Time Series")
+
+```
+
+
+# Smoothing and Moving Averages
+
+```{r}
+library(zoo)
+# 5-period rolling moving average
+smooth_5m <- zoo::rollmean(births_ts, k=5, fill=NA)
+
+# 12-period rolling moving average
+smooth_12m <- zoo::rollmean(births_ts, k=12, fill=NA)
+
+# Overlay on original plot
+plot(births_ts, main="Original with Moving Averages")
+lines(smooth_5m, col='blue')
+lines(smooth_12m, col='red')
+legend("topleft", legend=c("Original","5-month avg","12-month avg"),
+       col=c("black","blue","red"), lty=1, cex=0.8)
+
+# Symmetric convolution filter: X_t = (Z_{t-1} + Z_t + Z_{t+1}) / 3
+x_t <- filter(z_t, filter=rep(1/3,3), sides=2, method="convolution")
+
+```
+
+# Decomposition Commands
+
+```{r}
+# Additive decomposition into trend, seasonal, and random
+components <- decompose(births_ts)
+
+# Plot all four decomposition panels
+plot(components)
+
+```
+
+# White Noise Simulation and RV's
+
+```{r}
+# Generate n Gaussian white noise values ~ N(0,1)
+wn <- rnorm(1000, mean=0, sd=1)
+
+# Plot white noise
+plot(1:length(wn), wn, type='l', main="White Noise", xlab='t', ylab='Z_t')
+
+# Generate n uniform random variables on (min, max)
+u <- runif(1000, min=-1, max=1)
+mean(u)
+
+# Simulate random walk with drift delta
+z_t <- rnorm(499, 0, 1)
+x_t <- c(0, cumsum(z_t))           # cum sum of WN
+delta <- 0.6
+rw <- 0:499 * delta + x_t          # X_t=delta*t + X_0 + sum(Z_j)
+plot(rw, type="l", xlab="t", ylab="X_t", main="Random Walk with Drift")
+
+```
+
+
+# ARMA Simulation
+
+```{r}
+# Simulate MA(2): X_t = Z_t + 0.3*Z_{t-1} + 0.5*Z_{t-2}
+ma_sim <- arima.sim(n=1000, model=list(ma=c(0.3, 0.5)))
+
+# Simulate AR(1): X_t = 0.5*X_{t-1} + Z_t
+ar_sim <- arima.sim(n=1000, model=list(ar=c(0.5)))
+
+# Simulate AR(2): X_t = 0.7*X_{t-1} - 0.1*X_{t-2} + Z_t
+ar2_sim <- arima.sim(n=200, model=list(ar=c(0.7, -0.1)))
+
+# Simulate ARMA(1,1): X_t = 0.5*X_{t-1} + Z_t + 0.4*Z_{t-1}
+arma_sim <- arima.sim(n=200, model=list(ar=c(0.5), ma=c(0.4)))
+
+```
+
+# SAMPLE ACF and PACF:
+
+```{r}
+# Compute and plot sample autocorrelation function
+acf(x, lag.max=60, main="Sample ACF")
+
+# Compute and plot sample partial autocorrelation function
+pacf(x, lag.max=60, main="Sample PACF")
+
+# Handle NAs in ACF computation
+acf(x_t, na.action=na.pass, main="ACF with NAs")
+
+```
+
+
+# ACF and PACF (THEORETICAL)
+
+```{r}
+# Theoretical ACF for an AR model
+theo_acf <- ARMAacf(ar=c(0.7,-0.1), lag.max=20, pacf=FALSE)
+
+# Theoretical PACF for an AR model
+theo_pacf <- ARMAacf(ar=c(0.7,-0.1), lag.max=20, pacf=TRUE)
+
+# Theoretical ACF for an MA model
+theo_acf_ma <- ARMAacf(ma=c(0.7,-0.1), lag.max=20, pacf=FALSE)
+
+# Theoretical ACF for a mixed ARMA model
+theo_acf_arma <- ARMAacf(ar=0.5, ma=0.4, lag.max=20, pacf=FALSE)
+
+# Plot theoretical ACF as vertical bars
+plot(theo_acf, type="h", ylim=c(-1,1), main="Theoretical ACF",
+     col="red", ylab=expression(rho[X](h)), xlab="h")
+abline(h=0)
+
+# Overlay theoretical ACF (red) on top of sample ACF plot
+acf(ar2_sim, lag.max=20, main="Sample ACF")
+lines(x=0:20, y=theo_acf, col="red")
+```
+
+# Polynomial Root Commands for Causality and Invertibility
+
+```{r}
+# AR polynomial: phi(z) = 1 - 0.7z + 0.1z^2
+# All |roots| > 1 => causal
+polyroot(c(1, -0.7, 0.1))
+
+# MA polynomial: theta(z) = 1 + 0.4z
+# All |roots| > 1 => invertible
+polyroot(c(1, 0.4))
+
+# Compute absolute value of complex roots to check |z| > 1
+roots <- polyroot(c(1, -0.75, 0.5625))
+Mod(roots)
+
+# Plot roots on the complex plane with unit circle
+# (requires sourcing plot.roots.R from course materials)
+source("plot.roots.R")
+plot.roots(NULL, polyroot(c(1, -0.4004, 0.2866)), main="Roots of SAR part")
+```
+
+# Box Cox Transformations
+
+```{r}
+library(MASS)
+t <- 1:length(wine)
+fit <- lm(wine ~ t)
+# Compute Box-Cox log-likelihood and plot to find optimal lambda
+bcTransform <- boxcox(wine ~ t, plotit=TRUE)
+
+# Extract optimal lambda value
+lambda <- bcTransform$x[which(bcTransform$y == max(bcTransform$y))]
+lambda
+
+# Apply Box-Cox transformation (use log(x) if lambda is approximately 0)
+wine.bc <- (1/lambda) * (wine^lambda - 1)
+
+# Compare original vs transformed
+par(mfrow=c(1,2))
+ts.plot(wine, main="Original", ylab=expression(X[t]))
+ts.plot(wine.bc, main="Box-Cox Transformed", ylab=expression(Y[t]))
+par(mfrow=c(1,1))
+
+# Check normality of transformed data via histogram
+par(mfrow=c(1,2))
+hist(wine, main="Original")
+hist(wine.bc, main="Box-Cox Transformed")
+par(mfrow=c(1,1))
+
+```
+
+# Differencing Commands
+
+```{r}
+# First difference: (1-B)X_t, removes trend
+y1 <- diff(x, 1)
+
+# Seasonal difference at lag 12: (1-B^12)X_t, removes monthly seasonality
+y_12 <- diff(x, 12)
+
+# Both: first seasonal differencing, then first differencing
+y1 <- diff(wine.bc, 12)
+y12 <- diff(y1, 1)
+
+# Track sample variance at each step — stop when variance starts increasing
+var(wine.bc)  # after transformation
+var(y1)       # after seasonal differencing
+var(y12)      # after additional first differencing
+
+```
+
+# ARMA Fitting - MLE
+
+```{r}
+# Fit ARIMA(p,d,q) via maximum likelihood
+fit <- arima(x, order=c(2,1,0), method="ML")
+fit
+
+# Extract AIC
+AIC(fit)
+
+# Extract coefficients and residuals
+fit$coef
+fit$residuals
+```
+
+# SARIMA Fitting
+
+```{r}
+library(astsa)
+# Fit SARIMA(p,d,q) x (P,D,Q)_s
+fit.s <- sarima(xdata=prodn, p=2, d=1, q=0,
+                P=2, D=1, Q=2, S=12, details=FALSE)
+
+# View full fitted arima object
+fit.s$fit
+
+# Extract corrected AIC (preferred for model comparison)
+fit.s$AICc
+
+# Extract coefficients
+fit.s$fit$coef
+
+# Plot residuals
+plot(fit.s$fit$residuals)
+
+# Fix insignificant coefficients to 0 (NA = estimate freely, 0 = fix at zero)
+fit.s2 <- sarima(xdata=prodn, p=2, d=1, q=0,
+                 P=2, D=1, Q=2, S=12, details=FALSE,
+                 fixed=c(NA, 0, NA, NA, NA, NA))
+
+```
+
+# Yule Walker Estimation
+
+```{r}
+library(astsa)
+# Fit SARIMA(p,d,q) x (P,D,Q)_s
+fit.s <- sarima(xdata=prodn, p=2, d=1, q=0,
+                P=2, D=1, Q=2, S=12, details=FALSE)
+
+# View full fitted arima object
+fit.s$fit
+
+# Extract corrected AIC (preferred for model comparison)
+fit.s$AICc
+
+# Extract coefficients
+fit.s$fit$coef
+
+# Plot residuals
+plot(fit.s$fit$residuals)
+
+# Fix insignificant coefficients to 0 (NA = estimate freely, 0 = fix at zero)
+fit.s2 <- sarima(xdata=prodn, p=2, d=1, q=0,
+                 P=2, D=1, Q=2, S=12, details=FALSE,
+                 fixed=c(NA, 0, NA, NA, NA, NA))
+
+```
+
+# Splitting Data- Train and Test
+
+```{r}
+# Remove first 24 observations (e.g., different pattern)
+x_split <- births[-c(1:24)]
+
+# Use first 132 obs for training
+training <- x_split[1:132]
+
+# Reserve last 12 obs for testing
+testing <- x_split[133:144]
+
+```
+
+# General Plotting 
+```{r}
+# Set up side-by-side plots
+par(mfrow=c(1,2))
+
+# Reset to single plot
+par(mfrow=c(1,1))
+
+# Overlay a line on the current plot
+lines(x, col="blue")
+
+# Add legend
+legend("topright", c("A","B"), col=c("black","blue"), lty=1, cex=0.8)
+
+# Math expressions in labels
+ylab = expression(X[t])                                    # X_t
+ylab = expression(nabla^{12}~Y[t])                         # nabla^12 Y_t
+main = expression(theta[1] == 0.45~theta[2] == 0.55)       # theta_1 = 0.45
+
+```
+
